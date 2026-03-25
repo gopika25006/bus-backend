@@ -71,6 +71,61 @@ app.get("/users", (req, res) => {
 
 });
 
+
+/* ---------------- REGISTER API ---------------- */
+
+app.post("/register", (req, res) => {
+
+  const { username, password, email, phone } = req.body;
+
+  if (!username || !password || !email || !phone) {
+    return res.status(400).json({
+      success: false,
+      message: "All fields are required"
+    });
+  }
+
+  // check if user already exists
+  const checkUser = "SELECT * FROM users WHERE username = ? OR email = ?";
+
+  db.query(checkUser, [username, email], (err, result) => {
+
+    if (err) return res.status(500).send(err);
+
+    if (result.length > 0) {
+      return res.json({
+        success: false,
+        message: "User already exists"
+      });
+    }
+
+    // generate new card_id (simple method)
+    const getMaxId = "SELECT MAX(card_id) AS maxId FROM users";
+
+    db.query(getMaxId, (err, data) => {
+
+      const newId = (data[0].maxId || 100) + 1;
+
+      const insertUser =
+        "INSERT INTO users (card_id, username, password, email, phone, balance) VALUES (?, ?, ?, ?, ?, 0)";
+
+      db.query(insertUser, [newId, username, password, email, phone], (err) => {
+
+        if (err) return res.status(500).send(err);
+
+        res.json({
+          success: true,
+          message: "Registration successful"
+        });
+
+      });
+
+    });
+
+  });
+
+});
+
 /* ---------------- SMART CARD API ---------------- */
 
 /* Create smart card */
@@ -138,7 +193,7 @@ app.post("/trip/start", (req, res) => {
 
   const { entry_stop_id, card_id, bus_id } = req.body;
 
-  const checkBalance = "SELECT balance FROM smart_card WHERE card_id = ?";
+  const checkBalance = "SELECT balance FROM users WHERE card_id = ?";
 
   db.query(checkBalance, [card_id], (err, result) => {
 
@@ -156,7 +211,7 @@ app.post("/trip/start", (req, res) => {
 
     // Deduct ₹10
     const deductFare =
-      "UPDATE smart_card SET balance = balance - 10 WHERE card_id = ?";
+      "UPDATE users SET balance = balance - 10 WHERE card_id = ?"
 
     db.query(deductFare, [card_id], (err) => {
       if (err) return res.status(500).send(err);
@@ -238,7 +293,7 @@ app.post("/trip/end", (req, res) => {
         }
 
         const deduct =
-          "UPDATE smart_card SET balance = balance - ? WHERE card_id = ?";
+          "UPDATE users SET balance = balance - ? WHERE card_id = ?"
 
         db.query(deduct, [fare, card_id], (err) => {
 
@@ -312,6 +367,44 @@ app.post("/login", (req, res) => {
   });
 
 });
+
+/* ---------------- FORGOT PASSWORD API ---------------- */
+
+app.post("/forgot-password", (req, res) => {
+
+  const { value } = req.body; // email or phone
+
+  if (!value) {
+    return res.status(400).json({
+      success: false,
+      message: "Email or phone is required"
+    });
+  }
+
+  const sql = "SELECT * FROM users WHERE email = ? OR phone = ?";
+
+  db.query(sql, [value, value], (err, result) => {
+
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (result.length === 0) {
+      return res.json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // ✅ BETTER PRACTICE (no password exposure)
+    res.json({
+      success: true,
+      message: "Reset link sent (demo)"
+    });
+
+  });
+
+});
 /* ---------------- START SERVER ---------------- */
 
 app.listen(3001, () => {
@@ -319,3 +412,4 @@ app.listen(3001, () => {
   console.log("🚀 Server running on port 3001");
 
 });
+
