@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>TypeError: Cannot destructure property &#39;card_id&#39; of &#39;req.body&#39; as it is undefined.<br> &nbsp; &nbsp;at /Users/faihafathimav/Desktop/bus-backend/server.js:293:11<br> &nbsp; &nbsp;at Layer.handleRequest (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/lib/layer.js:152:17)<br> &nbsp; &nbsp;at next (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/lib/route.js:157:13)<br> &nbsp; &nbsp;at Route.dispatch (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/lib/route.js:117:3)<br> &nbsp; &nbsp;at handle (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/index.js:435:11)<br> &nbsp; &nbsp;at Layer.handleRequest (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/lib/layer.js:152:17)<br> &nbsp; &nbsp;at /Users/faihafathimav/Desktop/bus-backend/node_modules/router/index.js:295:15<br> &nbsp; &nbsp;at processParams (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/index.js:582:12)<br> &nbsp; &nbsp;at next (/Users/faihafathimav/Desktop/bus-backend/node_modules/router/index.js:291:5)<br> &nbsp; &nbsp;at read (/Users/faihafathimav/Desktop/bus-backend/node_modules/body-parser/lib/read.js:62:5)</pre>
+</body>
+</html>
