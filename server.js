@@ -15,7 +15,7 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "Fida@2247",
-  database: "smart_bus_system"
+  database: "smart_bus_system"   // ✅ FIXED
 });
 
 db.connect((err) => {
@@ -32,384 +32,303 @@ app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
 
-/* ---------------- PASSENGER API ---------------- */
-
-/* Add passenger */
-app.post("/passenger", (req, res) => {
-
-  const { name, phone } = req.body;
-
-  const sql = "INSERT INTO passenger (name, phone) VALUES (?, ?)";
-
-  db.query(sql, [name, phone], (err, result) => {
-
-    if (err) {
-      res.send(err);
-    } else {
-      res.send("Passenger added successfully");
-    }
-
-  });
-
-});
-
-/* Get all passengers */
-
-app.get("/users", (req, res) => {
-
-  const sql = "SELECT * FROM users";
-
-  db.query(sql, (err, result) => {
-
-    if (err) {
-      res.send(err);
-    } else {
-      res.json(result);
-    }
-
-  });
-
-});
-
-
-/* ---------------- REGISTER API ---------------- */
+/* ---------------- REGISTER ---------------- */
 
 app.post("/register", (req, res) => {
-
   const { username, password, email, phone } = req.body;
 
   if (!username || !password || !email || !phone) {
-    return res.status(400).json({
-      success: false,
-      message: "All fields are required"
-    });
+    return res.status(400).json({ success: false });
   }
 
-  // check if user already exists
-  const checkUser = "SELECT * FROM users WHERE username = ? OR email = ?";
-
-  db.query(checkUser, [username, email], (err, result) => {
-
-    if (err) return res.status(500).send(err);
+  const check = "SELECT * FROM users WHERE username=? OR email=?";
+  db.query(check, [username, email], (err, result) => {
 
     if (result.length > 0) {
-      return res.json({
-        success: false,
-        message: "User already exists"
-      });
+      return res.json({ success: false, message: "User exists" });
     }
 
-    // generate new card_id (simple method)
-    const getMaxId = "SELECT MAX(card_id) AS maxId FROM users";
-
-    db.query(getMaxId, (err, data) => {
+    const getMax = "SELECT MAX(card_id) AS maxId FROM users";
+    db.query(getMax, (err, data) => {
 
       const newId = (data[0].maxId || 100) + 1;
 
-      const insertUser =
+      const insert =
         "INSERT INTO users (card_id, username, password, email, phone, balance) VALUES (?, ?, ?, ?, ?, 0)";
 
-      db.query(insertUser, [newId, username, password, email, phone], (err) => {
+      db.query(insert, [newId, username, password, email, phone], (err) => {
+        if (err) return res.send(err);
 
-        if (err) return res.status(500).send(err);
-
-        res.json({
-          success: true,
-          message: "Registration successful"
-        });
-
+        res.json({ success: true });
       });
 
     });
-
   });
-
 });
 
-/* ---------------- SMART CARD API ---------------- */
+/* ---------------- LOGIN ---------------- */
 
-/* Create smart card */
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
 
-app.post("/card", (req, res) => {
+  const sql = "SELECT * FROM users WHERE username=? AND password=?";
+  db.query(sql, [username, password], (err, result) => {
 
-  const { balance, status, passenger_id } = req.body;
-
-  const sql =
-    "INSERT INTO smart_card (balance, status, passenger_id) VALUES (?, ?, ?)";
-
-  db.query(sql, [balance, status, passenger_id], (err, result) => {
-
-    if (err) {
-      res.send(err);
+    if (result.length > 0) {
+      res.json({
+        success: true,
+        card_id: result[0].card_id,   // ✅ IMPORTANT
+        username: result[0].username
+      });
     } else {
-      res.send("Smart card created successfully");
+      res.json({ success: false });
     }
-
   });
-
 });
 
-/* Check balance */
+/* ---------------- BALANCE ---------------- */
 
 app.get("/balance/:card_id", (req, res) => {
 
-  const card_id = req.params.card_id;
-
-  const sql = "SELECT balance FROM users WHERE card_id = ?";
-
-  db.query(sql, [card_id], (err, result) => {
-
-    if (err) {
-      res.send(err);
-    } else {
-      res.json(result);
+  db.query(
+    "SELECT balance FROM users WHERE card_id=?",
+    [req.params.card_id],
+    (err, result) => {
+      res.json(result[0]);
     }
-
-  });
+  );
 
 });
+
+/* ---------------- RECHARGE ---------------- */
+
 app.post("/recharge", (req, res) => {
 
   const { card_id, amount } = req.body;
 
-  const sql =
-    "UPDATE users SET balance = balance + ? WHERE card_id = ?";
+  db.query(
+    "UPDATE users SET balance = balance + ? WHERE card_id=?",
+    [amount, card_id],
+    (err) => {
 
-  db.query(sql, [amount, card_id], (err, result) => {
+      // ✅ store transaction
+      db.query(
+        "INSERT INTO transactions (card_id, amount, txn_type, txn_time) VALUES (?, ?, 'RECHARGE', NOW())",
+        [card_id, amount]
+      );
 
-    if (err) {
-      res.send(err);
-    } else {
-      res.send("Card recharged successfully");
+      res.send("Recharged");
     }
+  );
+});
 
+/* ---------------- STOPS ---------------- */
+
+app.get("/stops", (req, res) => {
+
+  db.query("SELECT * FROM stops ORDER BY stop_order", (err, result) => {
+    res.json(result);
   });
 
 });
-/* ---------------- TRIP API ---------------- */
-/* start trip */
+
+/* ---------------- START TRIP ---------------- */
 
 app.post("/trip/start", (req, res) => {
 
-  const { entry_stop_id, card_id, bus_id } = req.body;
+  const { card_id, entry_stop_id } = req.body;
 
-  const checkBalance = "SELECT balance FROM users WHERE card_id = ?";
+  db.query("SELECT balance FROM users WHERE card_id=?", [card_id], (err, result) => {
 
-  db.query(checkBalance, [card_id], (err, result) => {
-
-    if (err) return res.status(500).send(err);
-
-    if (result.length === 0) {
-      return res.status(404).send("Invalid Card ID");
+    if (result[0].balance < 10) {
+      return res.send("Insufficient balance");
     }
 
-    const balance = result[0].balance;
+    // deduct base fare
+    db.query("UPDATE users SET balance = balance - 10 WHERE card_id=?", [card_id]);
 
-    if (balance < 10) {
-      return res.status(400).send("Insufficient Balance");
-    }
+    // save transaction
+    db.query(
+      "INSERT INTO transactions (card_id, amount, txn_type, txn_time) VALUES (?, 10, 'BASE_FARE', NOW())",
+      [card_id]
+    );
 
-    // Deduct ₹10
-    const deductFare =
-      "UPDATE users SET balance = balance - 10 WHERE card_id = ?"
+    // create trip
+    db.query(
+      "INSERT INTO trips (card_id, entry_stop_id, start_time, status) VALUES (?, ?, NOW(), 'ACTIVE')",
+      [card_id, entry_stop_id]
+    );
 
-    db.query(deductFare, [card_id], (err) => {
-      if (err) return res.status(500).send(err);
-
-      // Start trip
-      const startTrip =
-        "INSERT INTO trips (card_id, start_time, entry_stop_id, status, bus_id) VALUES (?, NOW(), ?, 'ACTIVE', ?)";
-
-      db.query(startTrip, [card_id, entry_stop_id, bus_id], (err) => {
-        if (err) return res.status(500).send(err);
-
-        res.send("✅ Tap-IN successful (₹10 deducted)");
-      });
-    });
-
+    res.send("Trip started");
   });
 
 });
 
-/* End trip */
+/* ---------------- END TRIP ---------------- */
 
 app.post("/trip/end", (req, res) => {
 
   const { trip_id, exit_stop_id, card_id } = req.body;
 
-  const getTrip =
-    "SELECT entry_stop_id FROM trips WHERE trip_id = ?";
+  db.query(
+    "SELECT entry_stop_id FROM trips WHERE trip_id=?",
+    [trip_id],
+    (err, trip) => {
 
-  db.query(getTrip, [trip_id], (err, tripResult) => {
+      const entry = trip[0].entry_stop_id;
 
-    if (err) return res.send(err);
+      db.query(
+        "SELECT id, stop_order FROM stops WHERE id IN (?, ?)",
+        [entry, exit_stop_id],
+        (err, stops) => {
 
-    if (!tripResult.length || !tripResult[0].entry_stop_id) {
-      return res.send("❌ Invalid trip or missing entry stop");
-    }
+          let e, x;
 
-    const entry_stop_id = tripResult[0].entry_stop_id;
-
-    const getStops =
-      "SELECT id, stop_order FROM stops WHERE id IN (?, ?)";
-
-    db.query(getStops, [entry_stop_id, exit_stop_id], (err, stopResult) => {
-
-      if (err) return res.send(err);
-
-      let entryOrder, exitOrder;
-
-      stopResult.forEach(s => {
-        if (s.id === entry_stop_id) entryOrder = s.stop_order;
-        if (s.id === exit_stop_id) exitOrder = s.stop_order;
-      });
-
-      if (entryOrder === undefined || exitOrder === undefined) {
-        return res.send("❌ Stop data missing");
-      }
-
-      const distance = Math.abs(exitOrder - entryOrder);
-
-      if (isNaN(distance)) {
-        return res.send("❌ Distance calculation error");
-      }
-
-      const getFare = "SELECT cost_per_km FROM fare_rules LIMIT 1";
-
-      db.query(getFare, (err, fareResult) => {
-
-        if (err) return res.send(err);
-
-        if (!fareResult.length) {
-          return res.status(500).send("❌ Fare rules not configured");
-        }
-
-        const cost_per_km = fareResult[0].cost_per_km;
-
-        const fare = distance * cost_per_km;
-
-        if (isNaN(fare)) {
-          return res.status(500).send("❌ Fare calculation error");
-        }
-
-        const deduct =
-          "UPDATE users SET balance = balance - ? WHERE card_id = ?"
-
-        db.query(deduct, [fare, card_id], (err) => {
-
-          if (err) return res.status(500).send(err);
-
-          const endTrip =
-            "UPDATE trips SET exit_stop_id = ?, end_time = NOW(), status='COMPLETED' WHERE trip_id = ?";
-
-          db.query(endTrip, [exit_stop_id, trip_id], (err) => {
-
-            if (err) return res.status(500).send(err);
-
-            res.send(`✅ Trip ended. Fare deducted: ₹${fare}`);
-
+          stops.forEach(s => {
+            if (s.id == entry) e = s.stop_order;
+            if (s.id == exit_stop_id) x = s.stop_order;
           });
 
-        });
+          const distance = Math.abs(x - e);
 
-      });
+          db.query("SELECT cost_per_km FROM fare_rules LIMIT 1", (err, fareData) => {
 
-    });
+            const fare = distance * fareData[0].cost_per_km;
 
-  });
+            // deduct
+            db.query(
+              "UPDATE users SET balance = balance - ? WHERE card_id=?",
+              [fare, card_id]
+            );
 
+            // save transaction
+            db.query(
+              "INSERT INTO transactions (card_id, amount, txn_type, txn_time) VALUES (?, ?, 'DISTANCE_FARE', NOW())",
+              [card_id, fare]
+            );
+
+            // complete trip
+            db.query(
+              "UPDATE trips SET exit_stop_id=?, end_time=NOW(), status='COMPLETED' WHERE trip_id=?",
+              [exit_stop_id, trip_id]
+            );
+
+            res.send(`Trip ended. Fare ₹${fare}`);
+          });
+
+        }
+      );
+    }
+  );
 });
-/* ---------------- TRIP HISTORY ---------------- */
+
+/* ---------------- TRIPS ---------------- */
 
 app.get("/trips/:card_id", (req, res) => {
 
-  const card_id = req.params.card_id;
-
-  const sql = "SELECT * FROM trips WHERE card_id = ?";
-
-  db.query(sql, [card_id], (err, result) => {
-
-    if (err) {
-      res.status(500).send(err);
-    } else {
+  db.query(
+    "SELECT * FROM trips WHERE card_id=?",
+    [req.params.card_id],
+    (err, result) => {
       res.json(result);
     }
-
-  });
-
-});
-
-/* ---------------- LOGIN API ---------------- */
-
-app.post("/login", (req, res) => {
-
-  const { username, password } = req.body;
-
-  const sql =
-    "SELECT * FROM users WHERE username = ? AND password = ?";
-
-  db.query(sql, [username, password], (err, result) => {
-
-    if (err) return res.send(err);
-
-    if (result.length > 0) {
-      res.json({
-        success: true,
-        message: "Login successful"
-      });
-    } else {
-      res.json({
-        success: false,
-        message: "Invalid username or password"
-      });
-    }
-
-  });
+  );
 
 });
 
-/* ---------------- FORGOT PASSWORD API ---------------- */
+/* ---------------- TRANSACTIONS ---------------- */
 
-app.post("/forgot-password", (req, res) => {
+app.get("/transactions/:card_id", (req, res) => {
 
-  const { value } = req.body; // email or phone
-
-  if (!value) {
-    return res.status(400).json({
-      success: false,
-      message: "Email or phone is required"
-    });
-  }
-
-  const sql = "SELECT * FROM users WHERE email = ? OR phone = ?";
-
-  db.query(sql, [value, value], (err, result) => {
-
-    if (err) {
-      return res.status(500).json({ error: err.message });
+  db.query(
+    "SELECT * FROM transactions WHERE card_id=? ORDER BY txn_time DESC",
+    [req.params.card_id],
+    (err, result) => {
+      res.json(result);
     }
-
-    if (result.length === 0) {
-      return res.json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    // ✅ BETTER PRACTICE (no password exposure)
-    res.json({
-      success: true,
-      message: "Reset link sent (demo)"
-    });
-
-  });
+  );
 
 });
+
+/* ---------------- DASHBOARD ---------------- */
+
+app.get("/dashboard/:card_id", (req, res) => {
+
+  db.query(
+    "SELECT card_id, name, balance FROM users WHERE card_id=?",
+    [req.params.card_id],
+    (err, result) => {
+      res.json(result[0]);
+    }
+  );
+
+});
+
+/* ---------------- PROFILE ---------------- */
+
+app.put("/profile/:card_id", (req, res) => {
+
+  const { name, email, phone } = req.body;
+
+  db.query(
+    "UPDATE users SET name=?, email=?, phone=? WHERE card_id=?",
+    [name, email, phone, req.params.card_id],
+    () => {
+      res.send("Profile updated");
+    }
+  );
+
+});
+
+/* ---------------- CHANGE PASSWORD ---------------- */
+
+app.post("/change-password", (req, res) => {
+
+  const { card_id, oldPassword, newPassword } = req.body;
+
+  db.query(
+    "SELECT * FROM users WHERE card_id=? AND password=?",
+    [card_id, oldPassword],
+    (err, result) => {
+
+      if (result.length === 0) {
+        return res.send("Wrong password");
+      }
+
+      db.query(
+        "UPDATE users SET password=? WHERE card_id=?",
+        [newPassword, card_id],
+        () => {
+          res.send("Password changed");
+        }
+      );
+    }
+  );
+
+});
+
+/* ---------------- ADMIN ---------------- */
+
+app.get("/admin/users", (req, res) => {
+  db.query("SELECT * FROM users", (err, result) => {
+    res.json(result);
+  });
+});
+
+app.get("/admin/trips", (req, res) => {
+  db.query("SELECT * FROM trips", (err, result) => {
+    res.json(result);
+  });
+});
+
+app.get("/admin/revenue", (req, res) => {
+  db.query("SELECT SUM(amount) AS total FROM transactions", (err, result) => {
+    res.json(result[0]);
+  });
+});
+
 /* ---------------- START SERVER ---------------- */
 
 app.listen(3001, () => {
-
   console.log("🚀 Server running on port 3001");
-
 });
-
