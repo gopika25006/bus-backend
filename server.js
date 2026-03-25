@@ -100,7 +100,7 @@ app.get("/balance/:card_id", (req, res) => {
 
   const card_id = req.params.card_id;
 
-  const sql = "SELECT balance FROM smart_card WHERE card_id = ?";
+  const sql = "SELECT balance FROM users WHERE card_id = ?";
 
   db.query(sql, [card_id], (err, result) => {
 
@@ -113,15 +113,12 @@ app.get("/balance/:card_id", (req, res) => {
   });
 
 });
-
-/* Recharge card */
-
 app.post("/recharge", (req, res) => {
 
   const { card_id, amount } = req.body;
 
   const sql =
-    "UPDATE smart_card SET balance = balance + ? WHERE card_id = ?";
+    "UPDATE users SET balance = balance + ? WHERE card_id = ?";
 
   db.query(sql, [amount, card_id], (err, result) => {
 
@@ -134,7 +131,6 @@ app.post("/recharge", (req, res) => {
   });
 
 });
-
 /* ---------------- TRIP API ---------------- */
 /* start trip */
 
@@ -142,40 +138,38 @@ app.post("/trip/start", (req, res) => {
 
   const { entry_stop_id, card_id, bus_id } = req.body;
 
-  const checkBalance = "SELECT balance FROM users WHERE card_id = ?";
+  const checkBalance = "SELECT balance FROM smart_card WHERE card_id = ?";
 
   db.query(checkBalance, [card_id], (err, result) => {
 
-    if (err) return res.send(err);
+    if (err) return res.status(500).send(err);
 
     if (result.length === 0) {
-      return res.send("Invalid Card");
+      return res.status(404).send("Invalid Card ID");
     }
 
     const balance = result[0].balance;
 
     if (balance < 10) {
-      return res.send("Insufficient Balance");
+      return res.status(400).send("Insufficient Balance");
     }
 
     // Deduct ₹10
     const deductFare =
-      "UPDATE users SET balance = balance - 10 WHERE card_id = ?";
+      "UPDATE smart_card SET balance = balance - 10 WHERE card_id = ?";
 
     db.query(deductFare, [card_id], (err) => {
-      if (err) return res.send(err);
-    });
+      if (err) return res.status(500).send(err);
 
-    // Start trip
-    const startTrip =
-      "INSERT INTO trips (card_id, start_time, entry_stop_id, status) VALUES (?, NOW(), ?, 'ACTIVE')";
+      // Start trip
+      const startTrip =
+        "INSERT INTO trips (card_id, start_time, entry_stop_id, status, bus_id) VALUES (?, NOW(), ?, 'ACTIVE', ?)";
 
-    db.query(startTrip, [card_id, entry_stop_id], (err) => {
+      db.query(startTrip, [card_id, entry_stop_id, bus_id], (err) => {
+        if (err) return res.status(500).send(err);
 
-      if (err) return res.send(err);
-
-      res.send("✅ Tap-IN successful (₹10 deducted)");
-
+        res.send("✅ Tap-IN successful (₹10 deducted)");
+      });
     });
 
   });
@@ -231,27 +225,31 @@ app.post("/trip/end", (req, res) => {
 
         if (err) return res.send(err);
 
+        if (!fareResult.length) {
+          return res.status(500).send("❌ Fare rules not configured");
+        }
+
         const cost_per_km = fareResult[0].cost_per_km;
 
         const fare = distance * cost_per_km;
 
         if (isNaN(fare)) {
-          return res.send("❌ Fare calculation error");
+          return res.status(500).send("❌ Fare calculation error");
         }
 
         const deduct =
-          "UPDATE users SET balance = balance - ? WHERE card_id = ?";
+          "UPDATE smart_card SET balance = balance - ? WHERE card_id = ?";
 
         db.query(deduct, [fare, card_id], (err) => {
 
-          if (err) return res.send(err);
+          if (err) return res.status(500).send(err);
 
           const endTrip =
             "UPDATE trips SET exit_stop_id = ?, end_time = NOW(), status='COMPLETED' WHERE trip_id = ?";
 
           db.query(endTrip, [exit_stop_id, trip_id], (err) => {
 
-            if (err) return res.send(err);
+            if (err) return res.status(500).send(err);
 
             res.send(`✅ Trip ended. Fare deducted: ₹${fare}`);
 
@@ -272,12 +270,12 @@ app.get("/trips/:card_id", (req, res) => {
 
   const card_id = req.params.card_id;
 
-  const sql = "SELECT * FROM trip WHERE card_id = ?";
+  const sql = "SELECT * FROM trips WHERE card_id = ?";
 
   db.query(sql, [card_id], (err, result) => {
 
     if (err) {
-      res.send(err);
+      res.status(500).send(err);
     } else {
       res.json(result);
     }
@@ -290,31 +288,30 @@ app.get("/trips/:card_id", (req, res) => {
 
 app.post("/login", (req, res) => {
 
-  const { card_id } = req.body;
+  const { username, password } = req.body;
 
-  const sql = "SELECT * FROM users WHERE card_id = ?";
+  const sql =
+    "SELECT * FROM users WHERE username = ? AND password = ?";
 
-  db.query(sql, [card_id], (err, result) => {
+  db.query(sql, [username, password], (err, result) => {
 
     if (err) return res.send(err);
 
     if (result.length > 0) {
       res.json({
         success: true,
-        message: "Login successful",
-        user: result[0]
+        message: "Login successful"
       });
     } else {
       res.json({
         success: false,
-        message: "Invalid Card ID"
+        message: "Invalid username or password"
       });
     }
 
   });
 
 });
-
 /* ---------------- START SERVER ---------------- */
 
 app.listen(3001, () => {
