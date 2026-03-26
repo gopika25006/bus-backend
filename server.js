@@ -8,6 +8,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static('bus'));
 
 /* ---------------- DATABASE CONNECTION ---------------- */
 
@@ -327,6 +328,35 @@ app.get("/admin/revenue", (req, res) => {
   });
 });
 
+/* email */
+const nodemailer = require("nodemailer");
+
+app.post("/send-ticket-email", async (req, res) => {
+  const { email, message } = req.body;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "faihafathimavk@gmail.com",        // 👈 your email
+        pass: "lorzhzpppnlcbadn"           // 👈 NOT normal password
+      }
+    });
+
+    await transporter.sendMail({
+      from: "faihafathimavk@gmail.com",
+      to: email,
+      subject: "Your Bus Ticket 🎟️",
+      text: message
+    });
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.log(err);
+    res.json({ success: false });
+  }
+});
 /* ---------------- START SERVER ---------------- */
 
 app.listen(3001, () => {
